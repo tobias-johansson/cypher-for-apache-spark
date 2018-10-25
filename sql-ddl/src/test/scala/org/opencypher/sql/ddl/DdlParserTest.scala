@@ -26,6 +26,7 @@
  */
 package org.opencypher.sql.ddl
 
+import fastparse.all
 import fastparse.core.Parsed.{Failure, Success}
 import org.opencypher.okapi.api.schema.{Schema, SchemaPattern}
 import org.opencypher.okapi.api.types._
@@ -34,6 +35,8 @@ import org.opencypher.okapi.testing.MatchHelper.equalWithTracing
 import org.opencypher.okapi.testing.{BaseTestSuite, TestNameFixture}
 import org.opencypher.sql.ddl.DdlParser._
 import org.scalatest.mockito.MockitoSugar
+
+import scala.util.control.NonFatal
 
 class DdlParserTest extends BaseTestSuite with MockitoSugar with TestNameFixture {
 
@@ -54,18 +57,20 @@ class DdlParserTest extends BaseTestSuite with MockitoSugar with TestNameFixture
     val parsed = parser.entireInput.parse(input)
 
     parsed match {
-      case Failure(lastParser, _, extra) =>
-        debug(parser, input)
+      case Failure(lastParser, _, extra) => debug(parser, input)
       case _ =>
     }
 
-    parsed should matchPattern {
-      case Success(`expectation`, _) =>
+    try parsed should matchPattern { case Success(`expectation`, _) => }
+    catch {
+      case NonFatal(e) =>
+        println(s"Expectation: $expectation")
+        throw e
     }
   }
 
-  private def failure[T, Elem](parser: fastparse.core.Parser[T, Elem, String]): Unit = {
-    parser.parse(testName) should matchPattern {
+  private def failure[T, Elem](parser: fastparse.core.Parser[T, Elem, String], input: String = testName): Unit = {
+    parser.parse(input) should matchPattern {
       case Failure(_, _, _) =>
     }
   }
@@ -82,6 +87,16 @@ class DdlParserTest extends BaseTestSuite with MockitoSugar with TestNameFixture
            """.stripMargin
         throw DdlParsingException(index, locationPointer, extra.traced.expected, extra.traced.stack.toList)
     }
+  }
+
+  implicit class ParserTestSyntax[T](parser: fastparse.core.Parser[T, Char, String]) {
+    def succeedsOn(input: String, expectation: T): Unit = success(parser, input, expectation)
+    def failsOn(input: String): Unit = failure(parser, input)
+
+    def succeeds(expectation: T): Unit = succeedsOn(testName, expectation)
+    def fails(): Unit = failsOn(testName)
+
+    def debugOn(input: String) = debug(parser, input)
   }
 
 
@@ -328,32 +343,44 @@ class DdlParserTest extends BaseTestSuite with MockitoSugar with TestNameFixture
   describe("NODE LABEL SETS | RELATIONSHIP LABEL SETS") {
 
     it("parses (A) FROM view") {
-      success(nodeMappingDefinition, NodeMappingDefinition(Set("A"), List(NodeToViewDefinition("view"))))
+      success(nodeMappingDefinition, NodeMappingDefinition(Set("A"), List(NodeToViewDefinition(SqlIdentifier("view")))))
     }
 
     it("parses (A) FROM view (column1 AS propertyKey1, column2 AS propertyKey2)") {
-      success(nodeMappingDefinition, NodeMappingDefinition(Set("A"), List(NodeToViewDefinition("view", Some(Map("propertyKey1" -> "column1", "propertyKey2" -> "column2"))))))
+      success(nodeMappingDefinition, NodeMappingDefinition(Set("A"), List(NodeToViewDefinition(SqlIdentifier("view"), Some(Map("propertyKey1" -> "column1", "propertyKey2" -> "column2"))))))
     }
+
     it("parses (A) FROM viewA FROM viewB") {
-      success(nodeMappingDefinition, NodeMappingDefinition(Set("A"), List(NodeToViewDefinition("viewA"), NodeToViewDefinition("viewB"))))
+      success(nodeMappingDefinition, NodeMappingDefinition(Set("A"), List(NodeToViewDefinition(SqlIdentifier("viewA")), NodeToViewDefinition(SqlIdentifier("viewB")))))
     }
 
     it("parses NODE LABEL SETS ( (A) FROM viewA (B) FROM viewB )") {
-      success(nodeMappings, List(NodeMappingDefinition(Set("A"), List(NodeToViewDefinition("viewA"))), NodeMappingDefinition(Set("B"), List(NodeToViewDefinition("viewB")))))
+      success(nodeMappings, List(
+        NodeMappingDefinition(Set("A"), List(NodeToViewDefinition(SqlIdentifier("viewA")))),
+        NodeMappingDefinition(Set("B"), List(NodeToViewDefinition(SqlIdentifier("viewB"))))
+      ))
+    }
+
+    it("""parses NODE LABEL SETS ( (A) FROM `db A`." view ""x"" " (B) FROM [db B].[view y`s.x] )""") {
+      success(nodeMappings, List(
+        NodeMappingDefinition(Set("A"), List(NodeToViewDefinition(SqlIdentifier("`db A`", """" view ""x"" """")))),
+        NodeMappingDefinition(Set("B"), List(NodeToViewDefinition(SqlIdentifier("[db B]", "[view y`s.x]"))))
+      ))
     }
 
     it("parses NODE LABEL SETS ( (A) FROM viewA (column1 AS propertyKey1, column2 AS propertyKey2) FROM viewB (column1 AS propertyKey1, column2 AS propertyKey2) )") {
       success(nodeMappings, List(
         NodeMappingDefinition(Set("A"), List(
-          NodeToViewDefinition("viewA", Some(Map("propertyKey1" -> "column1", "propertyKey2" -> "column2"))),
-          NodeToViewDefinition("viewB", Some(Map("propertyKey1" -> "column1", "propertyKey2" -> "column2")))))
+          NodeToViewDefinition(SqlIdentifier("viewA"), Some(Map("propertyKey1" -> "column1", "propertyKey2" -> "column2"))),
+          NodeToViewDefinition(SqlIdentifier("viewB"), Some(Map("propertyKey1" -> "column1", "propertyKey2" -> "column2")))
+        ))
       ))
     }
 
     it("parses NODE LABEL SETS ( (A) FROM viewA (column1 AS propertyKey1, column2 AS propertyKey2) (B) FROM viewB (column1 AS propertyKey1, column2 AS propertyKey2) )") {
       success(nodeMappings, List(
-        NodeMappingDefinition(Set("A"), List(NodeToViewDefinition("viewA", Some(Map("propertyKey1" -> "column1", "propertyKey2" -> "column2"))))),
-        NodeMappingDefinition(Set("B"), List(NodeToViewDefinition("viewB", Some(Map("propertyKey1" -> "column1", "propertyKey2" -> "column2")))))
+        NodeMappingDefinition(Set("A"), List(NodeToViewDefinition(SqlIdentifier("viewA"), Some(Map("propertyKey1" -> "column1", "propertyKey2" -> "column2"))))),
+        NodeMappingDefinition(Set("B"), List(NodeToViewDefinition(SqlIdentifier("viewB"), Some(Map("propertyKey1" -> "column1", "propertyKey2" -> "column2")))))
       ))
     }
 
@@ -546,7 +573,7 @@ class DdlParserTest extends BaseTestSuite with MockitoSugar with TestNameFixture
           name = "myGraph",
           maybeSchemaName = Some("mySchema"),
           localSchemaDefinition = emptySchemaDef,
-          nodeMappings = List(NodeMappingDefinition(Set("A"), List(NodeToViewDefinition("foo")))),
+          nodeMappings = List(NodeMappingDefinition(Set("A"), List(NodeToViewDefinition(SqlIdentifier("foo"))))),
           relationshipMappings = List(RelationshipMappingDefinition("TYPE_1", List(RelationshipToViewDefinition(
             sourceView = SourceViewDefinition("baz", "alias_baz"),
             startNodeMappingDefinition = LabelToViewDefinition(
@@ -644,5 +671,46 @@ class DdlParserTest extends BaseTestSuite with MockitoSugar with TestNameFixture
       }
     }
   }
+
+  describe("sql id quoting") {
+
+
+    it("parses identifiers and retains quote chars") {
+      val p = sqlIdentifier.entireInput
+
+      p.succeedsOn("""foo""", SqlIdentifier(List("foo")))
+      p.succeedsOn("""foo.bar""", SqlIdentifier(List("foo", "bar")))
+      p.succeedsOn("""[foo bar]""", SqlIdentifier(List("[foo bar]")))
+      p.succeedsOn("""simple.[foo bar].`x[]y`.[a"b]]]""", SqlIdentifier(List("simple", "[foo bar]", "`x[]y`", "[a\"b]]]")))
+      p.failsOn("""simple.[foo""")
+    }
+
+    it("can parse quoted strings") {
+
+      val p1 = quotedString('`').entireInput
+      p1.succeedsOn("""`foo bar`""",   """foo bar""")
+      p1.succeedsOn("""`foo ``bar`""", """foo `bar""")
+      p1.succeedsOn("""` foo "[] `""", """ foo "[] """)
+      p1.failsOn("""`foo""")
+      p1.failsOn("""`foo ` ` `""")
+
+      val p2 = quotedString('\"').entireInput
+      p2.succeedsOn(""""foo bar"""",   """foo bar""")
+      p2.succeedsOn(""""foo ""bar"""", """foo "bar""")
+      p2.succeedsOn("""" foo `[] """", """ foo `[] """)
+      p2.failsOn(""""foo""")
+      p2.failsOn(""""foo " " """")
+
+      val p3 = quotedString('[', ']', ']').entireInput
+      p3.succeedsOn("""[foo bar]""",    """foo bar""")
+      p3.succeedsOn("""[foo []]bar]""", """foo []bar""")
+      p3.succeedsOn("""[ foo `" ]""",   """ foo `" """)
+      p3.failsOn("""[foo""")
+      p3.failsOn("""[foo ] ] ]""")
+
+    }
+
+  }
+
 
 }

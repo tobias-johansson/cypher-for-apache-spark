@@ -88,6 +88,26 @@ object DdlParser {
   val character: P[Unit] = P(CharIn('a' to 'z', 'A' to 'Z'))
   val identifier: P[Unit] = P(character ~~ P(character | digit | "_").repX)
 
+  // `foo bar` or "foo bar", etc.
+  def quotedString(quote: Char): P[String] = quotedString(quote, quote, quote)
+  def quotedString(open: Char, close: Char, escape: Char): P[String] = {
+    import fastparse.all._ // don't use whitespace rules here
+    val opener  = P(open.toString)
+    val closer  = P(close.toString)
+    val escaped = P(escape.toString ~ closer.!)
+    val specialChars = Set(close, escape)
+    val nonSpecial = P(CharsWhile(!specialChars(_)).!)
+    P(opener ~/ (nonSpecial | escaped).rep.map(_.mkString) ~/ closer)
+  }
+
+  val sqlIdentifierSegment: P[String] = P(
+    identifier.!
+      | quotedString('"').!           // MySQL, Oracle, SQL Server
+      | quotedString('`').!           // MySQL
+      | quotedString('[', ']', ']').! // SQL Server
+  )
+  val sqlIdentifier: P[SqlIdentifier] = P(sqlIdentifierSegment.repX(min = 1, sep = ".")).map(_.toList).map(SqlIdentifier.apply)
+
   def keyword(k: String): P[Unit] = P(IgnoreCase(k))
 
   val CATALOG: P[Unit] = keyword("CATALOG")
@@ -189,7 +209,7 @@ object DdlParser {
   val propertyToColumn: P[(String, String)] = P(identifier.! ~ AS ~/ identifier.!).map { case (column, propertyKey) => propertyKey -> column }
   val propertyMappingDefinition: P[PropertyToColumnMappingDefinition] = P("(" ~ propertyToColumn.rep(min = 1, sep = ",").map(_.toMap) ~/ ")")
 
-  val nodeToViewDefinition: P[NodeToViewDefinition] = P(FROM ~/ identifier.! ~/ propertyMappingDefinition.?).map(NodeToViewDefinition.tupled)
+  val nodeToViewDefinition: P[NodeToViewDefinition] = P(FROM ~/ sqlIdentifier ~/ propertyMappingDefinition.?).map(NodeToViewDefinition.tupled)
   val nodeMappingDefinition: P[NodeMappingDefinition] = P(nodeDefinition ~/ nodeToViewDefinition.rep(min = 1, sep = ",".?).map(_.toList)).map(NodeMappingDefinition.tupled)
   val nodeMappings: P[List[NodeMappingDefinition]] = P(NODE ~/ LABEL ~/ SETS ~/ "(" ~/ nodeMappingDefinition.rep(sep = ",".?).map(_.toList) ~/ ")")
 

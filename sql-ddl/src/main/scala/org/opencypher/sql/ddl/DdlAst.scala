@@ -171,7 +171,10 @@ case class GraphDefinition(
   relationshipMappings: List[RelationshipMappingDefinition] = List.empty
 ) extends DdlAst
 
-case class CardinalityConstraint(from: Int, to: Option[Int])
+case class CardinalityConstraint(
+  from: Int,
+  to: Option[Int]
+)
 
 case class SchemaPatternDefinition(
   sourceLabelCombinations: Set[LabelCombination],
@@ -182,7 +185,7 @@ case class SchemaPatternDefinition(
 ) extends DdlAst
 
 case class NodeToViewDefinition(
-  viewName: String,
+  viewName: SqlIdentifier,
   maybePropertyMapping: Option[PropertyToColumnMappingDefinition] = None
 )
 
@@ -191,9 +194,14 @@ case class NodeMappingDefinition(
   nodeToViewDefinitions: List[NodeToViewDefinition] = List.empty
 ) extends DdlAst
 
-case class SourceViewDefinition(name: String, alias: String) extends DdlAst
+case class SourceViewDefinition(
+  name: String,
+  alias: String
+) extends DdlAst
 
-case class JoinOnDefinition(joinPredicates: List[(ColumnIdentifier, ColumnIdentifier)]) extends DdlAst
+case class JoinOnDefinition(
+  joinPredicates: List[(ColumnIdentifier, ColumnIdentifier)]
+) extends DdlAst
 
 case class LabelToViewDefinition(
   labelSet: Set[String],
@@ -211,3 +219,15 @@ case class RelationshipMappingDefinition(
   relType: String,
   relationshipMappings: List[RelationshipToViewDefinition]
 ) extends DdlAst
+
+case class SqlIdentifier(
+  segments: List[String] = List.empty
+) {
+  override def toString: String =
+    segments.mkString(".")
+}
+
+object SqlIdentifier {
+  def apply(segments: String*): SqlIdentifier =
+    SqlIdentifier(segments.toList)
+}
