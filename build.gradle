@@ -6,7 +6,7 @@ plugins {
 
 apply from: 'build.params.gradle'
 
-task hey {
+task hey2 {
     group 'foo'
     description 'dummy'
 }
