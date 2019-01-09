@@ -6,6 +6,11 @@ plugins {
 
 apply from: 'build.params.gradle'
 
+task hey {
+    group 'foo'
+    description 'dummy'
+}
+
 allprojects {
     group   = 'org.opencypher'
     version = ver.self
