@@ -26,12 +26,18 @@
  */
 package org.opencypher.spark.impl
 
+import org.apache.spark.sql.catalyst.ScalaReflection
+import org.apache.spark.sql.catalyst.ScalaReflection.Schema
 import org.apache.spark.sql.catalyst.analysis.UnresolvedExtractValue
 import org.apache.spark.sql.catalyst.expressions.{ArrayContains, StringTranslate}
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.{monotonically_increasing_id, udf}
-import org.apache.spark.sql.types.{ArrayType, StringType}
+import org.apache.spark.sql.types.{ArrayType, NullType, StringType}
 import org.apache.spark.sql.{Column, functions}
+
+import scala.reflect.ClassTag
+import scala.reflect.runtime.universe.TypeTag
+import scala.util.Try
 
 object CAPSFunctions {
 
@@ -76,6 +82,9 @@ object CAPSFunctions {
 
   private def appendLong(array: Seq[Long], element: Long): Seq[Long] =
     array :+ element
+
+  def concatUDF[T: TypeTag:ClassTag]: UserDefinedFunction = functions.udf[Seq[T], Seq[T], Seq[T]](_ ++ _)
+  def nullConcatUDF = UserDefinedFunction(_ ++ _, ArrayType(NullType), Seq(ArrayType(NullType),ArrayType(NullType)))
 
   def get_rel_type(relTypeNames: Seq[String]): UserDefinedFunction = {
     val extractRelTypes = (booleanMask: Seq[Boolean]) => filterWithMask(relTypeNames)(booleanMask)
