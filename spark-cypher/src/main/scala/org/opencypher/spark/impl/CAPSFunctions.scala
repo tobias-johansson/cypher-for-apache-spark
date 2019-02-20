@@ -84,7 +84,9 @@ object CAPSFunctions {
     array :+ element
 
   def concatUDF[T: TypeTag:ClassTag]: UserDefinedFunction = functions.udf[Seq[T], Seq[T], Seq[T]](_ ++ _)
-  def nullConcatUDF = UserDefinedFunction(_ ++ _, ArrayType(NullType), Seq(ArrayType(NullType),ArrayType(NullType)))
+
+  // TODO: Can this be implemented more elegantly?
+  def nullConcatUDF = UserDefinedFunction((a: Seq[Any], b: Seq[Any]) => a ++ b, ArrayType(NullType), Some(Seq(ArrayType(NullType),ArrayType(NullType))))
 
   def get_rel_type(relTypeNames: Seq[String]): UserDefinedFunction = {
     val extractRelTypes = (booleanMask: Seq[Boolean]) => filterWithMask(relTypeNames)(booleanMask)
