@@ -47,6 +47,8 @@ import org.opencypher.okapi.relational.api.planning.{RelationalCypherResult, Rel
 import org.opencypher.okapi.relational.api.table.{RelationalCypherRecords, RelationalCypherRecordsFactory, RelationalEntityTableFactory, Table}
 import org.opencypher.okapi.relational.impl.RelationalConverters._
 import org.opencypher.okapi.relational.impl.planning.{RelationalOptimizer, RelationalPlanner}
+import org.opencypher.v9_0.ast.Statement
+import org.opencypher.v9_0.ast.semantics.SemanticState
 
 import scala.reflect.runtime.universe.TypeTag
 
@@ -139,8 +141,6 @@ abstract class RelationalCypherSession[T <: Table[T] : TypeTag] extends CypherSe
     maybeDrivingTable: Option[CypherRecords],
     queryCatalog: Map[QualifiedGraphName, PropertyGraph]
   ): Result = {
-    val ambientGraphNew = mountAmbientGraph(graph)
-
     val maybeRelationalRecords: Option[RelationalCypherRecords[T]] = maybeDrivingTable.map(_.asRelational)
 
     val inputFields = maybeRelationalRecords match {
@@ -153,7 +153,23 @@ abstract class RelationalCypherSession[T <: Table[T] : TypeTag] extends CypherSe
     val extractedParameters: CypherMap = extractedLiterals.mapValues(v => CypherValue(v))
     val allParameters = queryParameters ++ extractedParameters
 
+    cypherOnGraph(graph, query, stmt, allParameters, semState, inputFields, queryCatalog, maybeRelationalRecords)
+
+  }
+
+  private[opencypher] def cypherOnGraph(
+    graph: PropertyGraph,
+    query: String,
+    stmt: Statement,
+    allParameters: CypherMap,
+    semState: SemanticState,
+    inputFields: Set[Var],
+    queryCatalog: Map[QualifiedGraphName, PropertyGraph],
+    maybeRelationalRecords: Option[RelationalCypherRecords[T]]
+  ): RelationalCypherResult[T] = {
     logStageProgress("IR translation ...", newLine = false)
+
+    val ambientGraphNew = mountAmbientGraph(graph)
 
     val irBuilderContext = IRBuilderContext.initial(
       query,
