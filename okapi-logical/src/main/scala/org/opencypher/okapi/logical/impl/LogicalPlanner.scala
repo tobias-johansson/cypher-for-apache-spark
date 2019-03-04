@@ -181,6 +181,12 @@ class LogicalPlanner(producer: LogicalOperatorProducer)
       case (acc, (f, p: Property)) =>
         producer.projectField(p, f, acc)
 
+      case (acc, (f, a: Aggregator)) =>
+        val inner = a.inner.foldLeft(acc) {
+          case (acc2, expr) => planInnerExpr(expr, acc2)
+        }
+        producer.projectField(a, f, inner)
+
       case (acc, (f, func: FunctionExpr)) =>
         val projectArg = func.exprs.foldLeft(acc) {
           case (acc2, expr) => planInnerExpr(expr, acc2)
