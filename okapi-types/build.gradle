@@ -1,0 +1,6 @@
+description = 'Okapi Types'
+
+dependencies {
+    compile group: "org.typelevel", name: "discipline".scala(), version: "0.10.0"
+    compile group: "org.typelevel", name: "cats-laws".scala(), version: "1.1.0"
+}

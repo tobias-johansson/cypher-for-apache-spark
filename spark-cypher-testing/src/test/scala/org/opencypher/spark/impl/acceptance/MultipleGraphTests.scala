@@ -718,6 +718,61 @@ class MultipleGraphTests extends CAPSTestSuite with ScanGraphInit {
     ))
   }
 
+  it("foo") {
+
+    //val q =
+    //  """
+    //    |FROM GRAPH shards(ALL)
+    //    |MATCH (u: User)-[c:COLL]->(p: Photo)
+    //    |WITH count(p) AS p_count
+    //    |WITH u.name AS u_name
+    //    |FROM GRAPH _frontend_
+    //    |RETURN u_name, p_count
+    //  """.stripMargin
+
+    // Variable `p` not defined
+    //caps.cypher(
+    //  """FROM GRAPH orig
+    //    |MATCH (p)
+    //    |WITH p.name AS name
+    //    |RETURN p
+    //  """.stripMargin
+    //).records.show
+
+    caps.catalog.store("shard1", initGraph(
+      """|CREATE (u1:User  {id: 1, name: 'Mats', foo: 1})
+         |CREATE (u2:User  {id: 2, name: 'Max',  foo: 2})
+         |CREATE (a1:Album {id: 1})
+         |CREATE (a2:Album {id: 2})
+         |CREATE (p1:Photo {id: 1, name: 'Dog'})
+         |CREATE (p2:Photo {id: 2, name: 'Cat'})
+         |CREATE (p3:Photo {id: 3, name: 'Dolphin'})
+         |CREATE (p4:Photo {id: 4, name: 'Rock'})
+         |CREATE (p5:Photo {id: 5, name: 'Log'})
+         |CREATE (u1)-[:OWNS]->(a1)
+         |CREATE (a1)-[:CONTAINS]->(p1)
+         |CREATE (a1)-[:CONTAINS]->(p2)
+         |CREATE (u2)-[:OWNS]->(a2)
+         |CREATE (a2)-[:CONTAINS]->(p3)
+         |CREATE (a2)-[:CONTAINS]->(p4)
+         |CREATE (a2)-[:CONTAINS]->(p5)
+      """.stripMargin))
+
+    caps.catalog.store("empty", initGraph(
+      """|CREATE ()
+      """.stripMargin))
+
+    caps.cypher(
+      """FROM GRAPH shard1
+        |MATCH (u:User)-[o:OWNS]->(a:Album)-[c:CONTAINS]->(p:Photo)
+        |WITH u.name AS name, u.id AS uid, count(p) AS pcnt
+        |FROM GRAPH empty
+        |RETURN name, uid, pcnt
+      """.stripMargin
+    ).records.show
+
+  }
+
   it("construct match construct") {
     caps.catalog.store("g1", testGraphRels)
     val query =
